@@ -4,9 +4,10 @@ PY ?= python3
 install:            ## editable install with test deps
 	$(PY) -m pip install -e ".[dev]"
 
-data:               ## fetch + process + solar (no site)
+data:               ## fetch + process + basemap + solar (no site)
 	$(PY) -m rdst fetch
 	$(PY) -m rdst process
+	$(PY) -m rdst basemap
 	$(PY) -m rdst solar
 
 site:               ## run every stage and build ./site

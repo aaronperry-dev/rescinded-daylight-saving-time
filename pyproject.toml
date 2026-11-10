@@ -16,6 +16,7 @@ dependencies = [
     "contourpy>=1.2",
     "ijson>=3.2",     # stream the 170 MB boundary file instead of loading it whole
     "tzdata>=2024.1", # IANA rules for zoneinfo on platforms without a system tz database
+    "netCDF4>=1.6",   # read the ETOPO elevation/bathymetry grid (OPeNDAP subset or local file)
 ]
 
 [project.optional-dependencies]
