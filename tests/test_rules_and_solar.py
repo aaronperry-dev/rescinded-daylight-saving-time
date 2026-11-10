@@ -132,12 +132,25 @@ def test_extremes_ordering():
 
 
 # --------------------------------------------------------------------- colours
-def test_sequential_colors_are_distinct_and_get_darker():
-    for n in (5, 7, 8, 14):
-        cols = solar.sequential_colors(n)
-        assert len(set(cols)) == n
-        lum = [sum(int(c[i:i + 2], 16) * w for i, w in zip((1, 3, 5), (0.2126, 0.7152, 0.0722))) for c in cols]
-        assert lum == sorted(lum, reverse=True)
+def _lum(c):
+    return sum(int(c[i:i + 2], 16) * w for i, w in zip((1, 3, 5), (0.2126, 0.7152, 0.0722)))
+
+
+def test_brewer_colors_are_distinct_and_get_darker():
+    for metric in ("sunrise", "sunset"):
+        for n in (5, 7, 8, 14):
+            cols = solar.brewer_colors(metric, n)
+            assert len(cols) == len(set(cols)) == n
+            lum = [_lum(c) for c in cols]
+            assert lum == sorted(lum, reverse=True)
+
+
+def test_solar_views_use_the_published_colorbrewer_classes():
+    for metric, scheme in (("sunrise", "YlOrRd"), ("sunset", "RdPu")):
+        for stat in ("earliest", "latest"):
+            lo, hi, n = solar.scale_for(metric, stat)
+            got = [b["color"] for b in solar.legend_for(metric, stat)["bins"]]
+            assert got == config.COLORBREWER[scheme][n]
 
 
 def test_every_view_has_a_whole_number_of_bands():

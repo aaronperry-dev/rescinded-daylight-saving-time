@@ -26,6 +26,16 @@ def paths(tmp_path):
         {"type": "Feature", "properties": {"adm0_a3": "CAN", "postal": "ON"}, "geometry": mapping(box(-100, 40, -80, 45))},
     ])
     (raw / config.NE_STATES_NAME).write_text(json.dumps(states))
+    line = lambda coords, **props: {"type": "Feature", "properties": props, "geometry": {"type": "LineString", "coordinates": coords}}
+    (raw / config.NE_STATE_LINES_NAME).write_text(json.dumps(_fc([
+        line([(-90, 30), (-90, 40)], ADM0_A3="USA"),             # AA | BB
+        line([(-100, 40), (-80, 40)], ADM0_A3="USA"),
+        line([(10, 10), (11, 11)], ADM0_A3="FRA"),                # foreign: dropped
+    ])))
+    (raw / config.NE_COUNTRY_LINES_NAME).write_text(json.dumps(_fc([
+        line([(-100, 40), (-80, 40)], ADM0_LEFT="Canada", ADM0_RIGHT="United States of America"),
+        line([(0, 0), (1, 1)], ADM0_LEFT="France", ADM0_RIGHT="Spain"),
+    ])))
     # zones: Chicago west half, New York east half, plus a Canadian zone that overlaps by a sliver
     zone_fc = _fc([
         {"type": "Feature", "properties": {"tzid": "America/Chicago"}, "geometry": mapping(box(-101, 29, -90, 41))},
@@ -48,9 +58,11 @@ def test_process_keeps_only_us_zones_clipped_to_the_mask(paths):
     union = shapely.union_all([g for _, g in result])
     assert union.area == pytest.approx(mask.area, rel=1e-3)  # no gaps from simplification
     assert (paths.processed / "zone_rules.csv").exists()
-    assert json.loads((paths.processed / "conus_states.geojson").read_text())["features"]
-    states = {f["properties"]["postal"] for f in json.loads((paths.processed / "conus_states.geojson").read_text())["features"]}
-    assert states == {"AA", "BB"}
+    labels = json.loads((paths.processed / "state_labels.json").read_text())
+    assert {d["text"] for d in labels} == {"AA", "BB"}
+    lines = json.loads((paths.processed / "boundaries.geojson").read_text())["features"]
+    assert {f["properties"]["kind"] for f in lines} == {"state", "international"}
+    assert all(f["geometry"]["type"] == "LineString" for f in lines)
 
 
 def test_full_pipeline_builds_a_working_site(paths):
@@ -70,6 +82,11 @@ def test_full_pipeline_builds_a_working_site(paths):
     assert set(payload["scenarios"]) == {config.CURRENT, config.RESCINDED, config.PERMANENT}
     assert len(payload["zones"]["features"]) == 2
     assert {g["text"] for g in payload["groupLabels"]} == {"CENTRAL", "EASTERN"}
+    assert {d["text"] for d in payload["stateLabels"]} == {"AA", "BB"}
+    assert payload["boundaries"]["features"] and payload["basemap"] is None
+    # the only internal zone border is the Chicago | New York edge at lon -90; no coastline/outline
+    zb = payload["zoneBorders"]["features"]
+    assert zb and all(abs(c[0] + 90) < 1e-3 for f in zb for c in f["geometry"]["coordinates"])
 
     for key in payload["solar"]["datasets"]:
         js = (site / "data" / "solar" / f"{key}.js").read_text()
@@ -108,6 +125,6 @@ def test_build_site_clears_stale_output(tmp_path):
     site = tmp_path / "site"
     (site / "data").mkdir(parents=True)
     (site / "stale.txt").write_text("x")
-    build.build_site(site, zones_geojson=_fc([]), states_geojson=_fc([]), group_labels=[], year=2026,
+    build.build_site(site, zones_geojson=_fc([]), boundaries_geojson=_fc([]), zone_borders_geojson=_fc([]), state_labels=[], group_labels=[], year=2026,
                      dates=["2026-07-01"], tz_release="t", solar_manifest=None, solar_dir=None)
     assert not (site / "stale.txt").exists()
