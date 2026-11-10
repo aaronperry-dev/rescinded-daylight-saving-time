@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>If DST were rescinded &middot; CONUS time zones</title>
+  <meta name="description" content="Swipe between current Daylight Saving Time, rescinded DST and permanent DST across the contiguous United States: UTC offsets, sunrise and sunset clock times.">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside id="panel" aria-label="Controls">
+    <header>
+      <h1>If DST were rescinded&hellip;</h1>
+      <p class="sub">Swipe the divider to compare clock times across the contiguous U.S. <span id="yearTag"></span></p>
+    </header>
+
+    <section aria-labelledby="h-compare">
+      <h2 id="h-compare">Compare</h2>
+      <div class="pair">
+        <label class="sel"><span class="sel-tag left">Left</span>
+          <select id="selLeft"></select></label>
+        <label class="sel"><span class="sel-tag right">Right</span>
+          <select id="selRight"></select></label>
+      </div>
+    </section>
+
+    <section aria-labelledby="h-layer">
+      <h2 id="h-layer">Map layer</h2>
+      <div class="seg" id="modeSeg" role="radiogroup" aria-label="Map layer">
+        <button type="button" role="radio" data-mode="zones">Time zones</button>
+        <button type="button" role="radio" data-mode="sunrise">Sunrise</button>
+        <button type="button" role="radio" data-mode="sunset">Sunset</button>
+      </div>
+
+      <div id="viewBlock" hidden>
+        <div class="seg small" id="statSeg" role="radiogroup" aria-label="Which day of the year">
+          <button type="button" role="radio" data-stat="latest">Latest of the year</button>
+          <button type="button" role="radio" data-stat="earliest">Earliest of the year</button>
+        </div>
+      </div>
+
+      <div id="dateBlock">
+        <div class="date-row">
+          <label for="dateRange">Date</label>
+          <output id="dateLabel" for="dateRange"></output>
+        </div>
+        <input id="dateRange" type="range" min="0" step="1" value="0" aria-describedby="status">
+        <div id="dstStrip" class="strip" aria-hidden="true"></div>
+        <div class="strip-key"><span class="key-dst"></span> DST in effect under current law</div>
+      </div>
+      <p id="status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="h-legend">
+      <h2 id="h-legend"><span id="legendTitle">Legend</span></h2>
+      <div id="legend"></div>
+    </section>
+
+    <section aria-labelledby="h-table">
+      <h2 id="h-table"><span id="tableTitle"></span></h2>
+      <table id="table">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div id="hoverCard" class="hover-card" aria-live="polite"></div>
+    </section>
+
+    <details class="notes">
+      <summary>How this is made &amp; sources</summary>
+      <p><strong>Scenarios.</strong> <em>Current law</em> applies today&rsquo;s DST rules. <em>Rescinded</em> keeps every zone on standard time all year (Arizona, which never observes DST, is unchanged). <em>Permanent DST</em> keeps clocks at today&rsquo;s summer time all year.</p>
+      <p><strong>Sunrise &amp; sunset.</strong> For every place and every day of <span id="yearNote"></span> the pipeline computes sun times (NOAA approximation, about a minute accurate, standard 90.833&deg; zenith), adds the scenario&rsquo;s UTC offset for that day, and maps the latest or earliest clock time that place ever sees. Bands are 30 minutes wide; lines are isochrones labelled in local clock time (no AM/PM; see the legend). Lines jump at time-zone borders. Under current law the <em>latest sunrise</em> often falls on the morning of the March clock change rather than in January, so rescinding DST changes it by only minutes and permanent DST moves it by less than a full hour in places such as Los Angeles or Denver. The <em>earliest sunset</em> is identical under current law and rescinded DST.</p>
+      <p><strong>Data.</strong> Zone boundaries: <a href="https://github.com/evansiroky/timezone-boundary-builder">Timezone Boundary Builder</a> release <span id="tzRelease"></span> (&copy; OpenStreetMap contributors, ODbL). DST rules: IANA tz database via Python <code>zoneinfo</code>. State outlines: <a href="https://www.naturalearthdata.com/">Natural Earth</a>. Map: <a href="https://leafletjs.com/">Leaflet</a>; tiles &copy; OpenStreetMap contributors &copy; CARTO / Esri.</p>
+      <p>Built <span id="built"></span> with <a href="https://github.com/aaronperry-dev/rescinded-daylight-saving-time">rescinded-daylight-saving-time</a>.</p>
+    </details>
+  </aside>
+
+  <main id="stage">
+    <div id="map" role="application" aria-label="Map comparing two daylight saving time scenarios"></div>
+  </main>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="data/data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
