@@ -52,9 +52,23 @@
       <p id="status" class="status" aria-live="polite"></p>
     </section>
 
+    <section aria-labelledby="h-display">
+      <h2 id="h-display">Display</h2>
+      <div class="date-row">
+        <label for="opacityRange">Data layer opacity</label>
+        <output id="opacityLabel" for="opacityRange"></output>
+      </div>
+      <input id="opacityRange" type="range" min="10" max="100" step="5" value="78">
+    </section>
+
     <section aria-labelledby="h-legend">
       <h2 id="h-legend"><span id="legendTitle">Legend</span></h2>
       <div id="legend"></div>
+    </section>
+
+    <section id="basemapSection" aria-labelledby="h-basemap">
+      <h2 id="h-basemap">Basemap</h2>
+      <div id="basemapLegend"></div>
     </section>
 
     <section aria-labelledby="h-table">
@@ -69,8 +83,9 @@
     <details class="notes">
       <summary>How this is made &amp; sources</summary>
       <p><strong>Scenarios.</strong> <em>Current law</em> applies today&rsquo;s DST rules. <em>Rescinded</em> keeps every zone on standard time all year (Arizona, which never observes DST, is unchanged). <em>Permanent DST</em> keeps clocks at today&rsquo;s summer time all year.</p>
-      <p><strong>Sunrise &amp; sunset.</strong> For every place and every day of <span id="yearNote"></span> the pipeline computes sun times (NOAA approximation, about a minute accurate, standard 90.833&deg; zenith), adds the scenario&rsquo;s UTC offset for that day, and maps the latest or earliest clock time that place ever sees. Bands are 30 minutes wide; lines are isochrones labelled in local clock time (no AM/PM; see the legend). Lines jump at time-zone borders. Under current law the <em>latest sunrise</em> often falls on the morning of the March clock change rather than in January, so rescinding DST changes it by only minutes and permanent DST moves it by less than a full hour in places such as Los Angeles or Denver. The <em>earliest sunset</em> is identical under current law and rescinded DST.</p>
-      <p><strong>Data.</strong> Zone boundaries: <a href="https://github.com/evansiroky/timezone-boundary-builder">Timezone Boundary Builder</a> release <span id="tzRelease"></span> (&copy; OpenStreetMap contributors, ODbL). DST rules: IANA tz database via Python <code>zoneinfo</code>. State outlines: <a href="https://www.naturalearthdata.com/">Natural Earth</a>. Map: <a href="https://leafletjs.com/">Leaflet</a>; tiles &copy; OpenStreetMap contributors &copy; CARTO / Esri.</p>
+      <p><strong>Sunrise &amp; sunset.</strong> For every place and every day of <span id="yearNote"></span> the pipeline computes sun times (NOAA approximation, about a minute accurate, standard 90.833&deg; zenith), adds the scenario&rsquo;s UTC offset for that day, and maps the latest or earliest clock time that place ever sees. Bands are 30 minutes wide; dashed lines are isochrones labelled in local clock time (no AM/PM; see the legend). Lines jump at time-zone borders. Under current law the <em>latest sunrise</em> often falls on the morning of the March clock change rather than in January, so rescinding DST changes it by only minutes and permanent DST moves it by less than a full hour in places such as Los Angeles or Denver. The <em>earliest sunset</em> is identical under current law and rescinded DST.</p>
+      <p><strong>Basemap.</strong> Rendered by the pipeline, with no tile server and no API key: land is coloured by elevation in feet above sea level and the ocean and lakes by depth in feet, from NOAA&rsquo;s <a href="https://www.ncei.noaa.gov/products/etopo-global-relief-model">ETOPO global relief model</a> (public domain), with a hillshade. Coastlines and lakes: <a href="https://www.naturalearthdata.com/">Natural Earth</a> (public domain). Boundaries: heaviest line is an international border, the thin black line a state or province, and the thick white line with a dark edge a time-zone border.</p>
+      <p><strong>Data.</strong> Zone boundaries: <a href="https://github.com/evansiroky/timezone-boundary-builder">Timezone Boundary Builder</a> release <span id="tzRelease"></span> (&copy; OpenStreetMap contributors, ODbL). DST rules: IANA tz database via Python <code>zoneinfo</code>. Sunrise and sunset colours: <a href="https://colorbrewer2.org/">ColorBrewer</a> YlOrRd and RdPu schemes, &copy; Cynthia A. Brewer, Pennsylvania State University. Map: <a href="https://leafletjs.com/">Leaflet</a>. The optional OpenStreetMap and Esri basemaps load from their own servers.</p>
       <p>Built <span id="built"></span> with <a href="https://github.com/aaronperry-dev/rescinded-daylight-saving-time">rescinded-daylight-saving-time</a>.</p>
     </details>
   </aside>

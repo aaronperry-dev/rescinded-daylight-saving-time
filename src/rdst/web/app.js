@@ -46,7 +46,7 @@
 
   // --------------------------------------------------------------------- state
   const defaultIdx = Math.max(0, D.dates.indexOf(D.year + '-07-01'));
-  const state = { left: 'current', right: 'rescinded', mode: 'zones', stat: 'latest', dateIdx: defaultIdx, ratio: 0.5 };
+  const state = { left: 'current', right: 'rescinded', mode: 'zones', stat: 'latest', dateIdx: defaultIdx, ratio: 0.5, opacity: 0.78 };
   (function readHash() {
     const q = new URLSearchParams(location.hash.slice(1));
     const ok = (k, allowed) => allowed.includes(q.get(k));
@@ -56,55 +56,83 @@
     if (ok('s', ['latest', 'earliest'])) state.stat = q.get('s');
     const d = parseInt(q.get('d'), 10);
     if (d >= 0 && d < D.dates.length) state.dateIdx = d;
+    const o = parseInt(q.get('o'), 10);
+    if (o >= 10 && o <= 100) state.opacity = o / 100;
   })();
   const isoDate = () => D.dates[state.dateIdx];
   const viewKey = () => state.mode + '_' + state.stat;
 
   // ----------------------------------------------------------------------- map
+  const BM = D.basemap;                // null when the site was built without `rdst basemap`
   const map = L.map('map', {
     zoomControl: false, minZoom: 3, maxZoom: 12, zoomSnap: 0.5, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,
+    maxBoundsViscosity: 0.7,
   });
+  if (BM) {
+    $('map').style.background = BM.background;
+    map.setMaxBounds([[BM.bounds[1], BM.bounds[0]], [BM.bounds[3], BM.bounds[2]]]);
+  }
   const CONUS_BOUNDS = [[24.5, -125], [49.6, -66.6]];
   map.fitBounds(CONUS_BOUNDS, { padding: [8, 8] });
   L.control.zoom({ position: 'topleft' }).addTo(map);
 
-  map.createPane('left').style.zIndex = 450;
-  map.createPane('right').style.zIndex = 450;
+  // Data fills (zones / bands) sit in their own panes so the opacity slider can fade them
+  // without fading isochrones or labels. Both sides' panes are clipped by the swipe divider.
+  const PANES = { left: ['leftFill', 'left'], right: ['rightFill', 'right'] };
+  map.createPane('leftFill').style.zIndex = 450;
+  map.createPane('rightFill').style.zIndex = 450;
+  map.createPane('left').style.zIndex = 455;
+  map.createPane('right').style.zIndex = 455;
   map.createPane('borders').style.zIndex = 500;
   map.getPane('borders').style.pointerEvents = 'none';
   map.createPane('labels').style.zIndex = 650;
   map.getPane('labels').style.pointerEvents = 'none';
 
-  const carto = (style, opts) => L.tileLayer(
-    'https://{s}.basemaps.cartocdn.com/' + style + '/{z}/{x}/{y}{r}.png',
-    Object.assign({ subdomains: 'abcd', maxZoom: 20,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>' }, opts));
-  const esri = (svc, opts) => L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/' + svc + '/MapServer/tile/{z}/{y}/{x}',
-    Object.assign({ maxZoom: 19, attribution: 'Tiles &copy; Esri' }, opts));
-  const basemaps = {
-    'Light': L.layerGroup([carto('light_nolabels'), carto('light_only_labels', { pane: 'labels' })]),
-    'Dark': L.layerGroup([carto('dark_nolabels'), carto('dark_only_labels', { pane: 'labels' })]),
-    'Streets': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }),
-    'Satellite': L.layerGroup([esri('World_Imagery'), esri('Reference/World_Boundaries_and_Places', { pane: 'labels' })]),
-  };
-  basemaps['Light'].addTo(map);
+  const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  const basemaps = {};
+  if (BM) {
+    basemaps['Terrain & bathymetry'] = L.tileLayer('tiles/{z}/{x}/{y}.jpg', {
+      minZoom: BM.minZoom, maxNativeZoom: BM.maxZoom, maxZoom: 12, tileSize: BM.tileSize,
+      bounds: [[BM.bounds[1], BM.bounds[0]], [BM.bounds[3], BM.bounds[2]]],
+      attribution: 'Relief &amp; depth: ' + BM.demLabel + ' &middot; shorelines &amp; borders: <a href="https://www.naturalearthdata.com/">Natural Earth</a>',
+    });
+  }
+  basemaps['Plain'] = L.layerGroup();
+  basemaps['OpenStreetMap'] = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: OSM });
+  basemaps['Satellite (Esri)'] = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 19, attribution: 'Tiles &copy; Esri' });
+  const baseName = BM ? 'Terrain & bathymetry' : 'Plain';
+  basemaps[baseName].addTo(map);
   L.control.layers(basemaps, null, { position: 'topright' }).addTo(map);
+  map.on('baselayerchange', (e) => { $('basemapSection').hidden = !BM || e.name !== 'Terrain & bathymetry'; });
 
-  // thin state lines, then a dark halo + white line for zone borders (shared by both sides)
-  L.geoJSON(D.states, { pane: 'borders', interactive: false,
-    style: { fill: false, color: '#5d5c58', weight: 0.8, opacity: 0.85 } }).addTo(map);
-  L.geoJSON(D.zones, { pane: 'borders', interactive: false,
-    style: { fill: false, color: '#0b0b0b', weight: 4, opacity: 0.22 } }).addTo(map);
-  L.geoJSON(D.zones, { pane: 'borders', interactive: false,
-    style: { fill: false, color: '#ffffff', weight: 2, opacity: 0.95 } }).addTo(map);
+  // Administrative boundaries, drawn bottom to top so every class stays readable on any basemap:
+  //   time-zone borders (dark halo + white), then state/province lines (white casing + black),
+  //   then international borders (wide white casing + heavy black) on top.
+  const stroke = (data, style) => L.geoJSON(data, { pane: 'borders', interactive: false,
+    style: Object.assign({ fill: false, lineCap: 'round', lineJoin: 'round' }, style) }).addTo(map);
+  const kind = (k) => ({ type: 'FeatureCollection', features: D.boundaries.features.filter((f) => f.properties.kind === k) });
+  stroke(D.zoneBorders, { color: '#000000', weight: 8, opacity: 0.4 });
+  stroke(D.zoneBorders, { color: '#ffffff', weight: 5, opacity: 1 });
+  stroke(kind('state'), { color: '#ffffff', weight: 4, opacity: 0.55 });
+  stroke(kind('state'), { color: '#171717', weight: 1.7, opacity: 1 });
+  stroke(kind('international'), { color: '#ffffff', weight: 7.5, opacity: 0.9 });
+  stroke(kind('international'), { color: '#000000', weight: 3.6, opacity: 1 });
 
   const groupLabels = L.layerGroup(D.groupLabels.map((g) => L.marker([g.lat, g.lon], {
     pane: 'labels', interactive: false, keyboard: false,
     icon: L.divIcon({ className: 'zone-label', html: '<span>' + g.text + '</span>', iconSize: [0, 0] }),
   }))).addTo(map);
-  const syncZoomClass = () => map.getContainer().classList.toggle('map-narrow', map.getZoom() > 6.5);
+  L.layerGroup(D.stateLabels.map((g) => L.marker([g.lat, g.lon], {
+    pane: 'labels', interactive: false, keyboard: false,
+    icon: L.divIcon({ className: 'state-label', html: '<span>' + g.text + '</span>', iconSize: [0, 0] }),
+  }))).addTo(map);
+  const syncZoomClass = () => {
+    const c = map.getContainer().classList;
+    c.toggle('map-narrow', map.getZoom() > 6.5);
+    c.toggle('map-far', map.getZoom() < 5);
+  };
   map.on('zoomend', syncZoomClass); syncZoomClass();
 
   // ------------------------------------------------------- per-side data layers
@@ -112,7 +140,7 @@
   SIDES.forEach((side) => {
     layers[side] = {
       zones: L.geoJSON(D.zones, {
-        pane: side,
+        pane: PANES[side][0],
         style: (f) => zoneStyle(side, f),
         onEachFeature: (f, lyr) => {
           lyr.bindTooltip(() => zoneTip(side, f.properties), { sticky: true });
@@ -128,7 +156,7 @@
 
   function zoneStyle(side, f) {
     const c = colorFor(offsetFor(f.properties, isoDate(), state[side]));
-    return { fillColor: c, fillOpacity: 0.82, color: c, weight: 1, opacity: 0.82 };
+    return { fillColor: c, fillOpacity: 1, color: c, weight: 1, opacity: 1 };
   }
   function zoneTip(side, p) {
     const iso = isoDate(), s = state[side];
@@ -165,8 +193,10 @@
     const nw = map.containerPointToLayerPoint([0, 0]);
     const se = map.containerPointToLayerPoint(size);
     const cx = nw.x + x;
-    map.getPane('left').style.clip = 'rect(' + nw.y + 'px,' + cx + 'px,' + se.y + 'px,' + nw.x + 'px)';
-    map.getPane('right').style.clip = 'rect(' + nw.y + 'px,' + se.x + 'px,' + se.y + 'px,' + cx + 'px)';
+    const leftClip = 'rect(' + nw.y + 'px,' + cx + 'px,' + se.y + 'px,' + nw.x + 'px)';
+    const rightClip = 'rect(' + nw.y + 'px,' + se.x + 'px,' + se.y + 'px,' + cx + 'px)';
+    PANES.left.forEach((p) => { map.getPane(p).style.clip = leftClip; });
+    PANES.right.forEach((p) => { map.getPane(p).style.clip = rightClip; });
     divider.style.left = x + 'px';
     $('handle').setAttribute('aria-valuenow', Math.round(state.ratio * 100));
   }
@@ -221,8 +251,8 @@
     const L_ = layers[side];
     L_.bands.clearLayers(); L_.lines.clearLayers(); L_.labels.clearLayers();
     L_.bands.addLayer(L.geoJSON(ds.bands, {
-      pane: side,
-      style: (f) => { const c = bins[f.properties.bin].color; return { fillColor: c, fillOpacity: 0.88, color: c, weight: 1, opacity: 0.88 }; },
+      pane: PANES[side][0],
+      style: (f) => { const c = bins[f.properties.bin].color; return { fillColor: c, fillOpacity: 1, color: c, weight: 1, opacity: 1 }; },
       onEachFeature: (f, lyr) => {
         const k = f.properties.bin;
         const hi = k + 1 < bins.length ? bins[k + 1].from : view.legend.end;
@@ -230,7 +260,7 @@
       },
     }));
     L_.lines.addLayer(L.geoJSON(ds.lines, { pane: side, interactive: false,
-      style: { color: '#0b0b0b', weight: 1.1, opacity: 0.85 } }));
+      style: { color: '#1a1a1a', weight: 1.4, opacity: 0.95, dashArray: '6 4' } }));
     ds.labels.forEach((l) => L_.labels.addLayer(L.marker([l[0], l[1]], {
       pane: side, interactive: false, keyboard: false,
       icon: L.divIcon({ className: 'iso-label', iconSize: [0, 0],
@@ -247,6 +277,12 @@
     });
   }
 
+  function writeHash() {
+    history.replaceState(null, '', '#' + new URLSearchParams({
+      l: state.left, r: state.right, m: state.mode, s: state.stat, d: String(state.dateIdx),
+      o: String(Math.round(state.opacity * 100)) }).toString());
+  }
+
   function render() {
     const zonesMode = state.mode === 'zones';
     $('viewBlock').hidden = zonesMode;
@@ -256,8 +292,8 @@
     $('selLeft').value = state.left; $('selRight').value = state.right;
     $('chipLeft').textContent = D.scenarios[state.left];
     $('chipRight').textContent = D.scenarios[state.right];
-    history.replaceState(null, '', '#' + new URLSearchParams({
-      l: state.left, r: state.right, m: state.mode, s: state.stat, d: String(state.dateIdx) }).toString());
+    writeHash();
+    applyOpacity();
 
     setVisible('zones', zonesMode);
     setVisible('bands', !zonesMode); setVisible('lines', !zonesMode); setVisible('labels', !zonesMode);
@@ -287,6 +323,30 @@
       if (token !== renderToken) return;
       $('status').textContent = 'Sunrise/sunset data is missing. Run `rdst solar` and rebuild the site.';
     });
+  }
+
+  // ------------------------------------------------- opacity + basemap legend
+  function applyOpacity() {
+    SIDES.forEach((s) => { map.getPane(PANES[s][0]).style.opacity = String(state.opacity); });
+    $('opacityLabel').textContent = Math.round(state.opacity * 100) + '%';
+  }
+
+  function rampBar(stops, ticks, suffix) {
+    const n = stops.length;
+    const pos = (i) => (i / (n - 1)) * 100;
+    const grad = stops.map((st, i) => st.color + ' ' + pos(i).toFixed(2) + '%').join(',');
+    const labels = stops.map((st, i) => (ticks.includes(st.ft)
+      ? '<span style="left:' + pos(i).toFixed(2) + '%" class="' + (i === 0 ? 'first' : i === n - 1 ? 'last' : '') + '">' +
+        st.ft.toLocaleString('en-US') + (i === n - 1 ? '+' : '') + '</span>' : '')).join('');
+    return '<div class="bm-bar" style="background:linear-gradient(to right,' + grad + ')"></div>' +
+      '<div class="bm-ticks">' + labels + '</div>';
+  }
+  function renderBasemapLegend() {
+    if (!BM) { $('basemapSection').hidden = true; return; }
+    $('basemapLegend').innerHTML =
+      '<div class="bm-title">Land elevation above sea level (ft)</div>' + rampBar(BM.landRamp.filter((s) => s.ft >= 0), [0, 1000, 3000, 5000, 8000, 14000]) +
+      '<div class="bm-title">Water depth below the surface (ft)</div>' + rampBar(BM.bathyRamp, [0, 100, 400, 1500, 6000, 20000]) +
+      '<p class="legend-note">Colour steps are not evenly spaced in feet. Ocean depth is below sea level; lake depth is below the lake&rsquo;s own surface. Hill-shaded.</p>';
   }
 
   // ----------------------------------------------------------- sidebar widgets
@@ -358,6 +418,11 @@
     if (!SOLAR) document.querySelectorAll('#modeSeg [data-mode="sunrise"], #modeSeg [data-mode="sunset"]').forEach((b) => { b.hidden = true; });
     document.querySelectorAll('#modeSeg button').forEach((b) => b.addEventListener('click', () => { state.mode = b.dataset.mode; render(); }));
     document.querySelectorAll('#statSeg button').forEach((b) => b.addEventListener('click', () => { state.stat = b.dataset.stat; render(); }));
+
+    const op = $('opacityRange');
+    op.value = String(Math.round(state.opacity * 100));
+    op.addEventListener('input', () => { state.opacity = parseInt(op.value, 10) / 100; applyOpacity(); writeHash(); });
+    renderBasemapLegend();
 
     const range = $('dateRange');
     range.max = String(D.dates.length - 1); range.value = String(state.dateIdx);

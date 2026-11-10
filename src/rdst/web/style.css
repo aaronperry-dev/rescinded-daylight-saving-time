@@ -85,6 +85,13 @@ input[type=range] { width: 100%; margin: 6px 0 2px; accent-color: var(--accent-i
 .ramp-labels { display: flex; margin-top: 3px; font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .ramp-labels span { flex: 1; white-space: nowrap; }
 .ramp-labels span:last-child { flex: 0 0 auto; text-align: right; }
+.bm-title { margin: 10px 0 4px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.bm-title:first-child { margin-top: 0; }
+.bm-bar { height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.2); }
+.bm-ticks { position: relative; height: 15px; margin-top: 3px; font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.bm-ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.bm-ticks span.first { transform: none; }
+.bm-ticks span.last { transform: translateX(-100%); }
 .legend-note { margin: 6px 0 0; font-size: 12px; color: var(--ink-3); }
 
 /* --- tables ------------------------------------------------------------- */
@@ -137,6 +144,12 @@ th.delta { text-align: right; }
   font: 700 11px/1.1 system-ui, sans-serif; letter-spacing: .06em; border-radius: 2px; white-space: nowrap;
 }
 .map-narrow .zone-label { display: none; }
+.state-label { background: none; border: 0; }
+.state-label span {
+  display: block; width: max-content; translate: -50% -50%; font: 700 10.5px/1 system-ui, sans-serif; letter-spacing: .04em;
+  color: #111; text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff, 0 0 3px #fff; white-space: nowrap; opacity: .85;
+}
+.map-far .state-label { display: none; }
 .leaflet-tooltip { font: 12px/1.35 system-ui, sans-serif; }
 
 /* --- small screens ------------------------------------------------------ */
@@ -148,3 +161,6 @@ th.delta { text-align: right; }
   .chip { bottom: 40px; max-width: 42vw; font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+/* hairline seams between scaled tiles at fractional zoom levels (Chromium) */
+.leaflet-tile-pane .leaflet-tile { outline: 1px solid transparent; }
