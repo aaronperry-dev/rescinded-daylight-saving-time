@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 
-from . import build, config, fetch, solar, zones
+from . import basemap, boundaries, build, config, fetch, solar, zones
 
 
 @dataclass
@@ -36,12 +36,18 @@ class Paths:
         return self.processed / "conus_zones.geojson"
 
     @property
+    def tiles(self) -> Path:
+        return self.processed / "basemap"
+
+    @property
     def meta(self) -> Path:
         return self.processed / "meta.json"
 
 
-def run_fetch(paths: Paths, tz_release: str | None = None, force: bool = False) -> dict:
-    return fetch.fetch_all(paths.raw, tz_release=tz_release, force=force)
+def run_fetch(paths: Paths, tz_release: str | None = None, force: bool = False, dem: str = "etopo2022",
+              dem_resolution: str = "60s", dem_file: str | None = None, with_dem: bool = True) -> dict:
+    return fetch.fetch_all(paths.raw, tz_release=tz_release, force=force, dem=dem,
+                           dem_resolution=dem_resolution, dem_file=dem_file, with_dem=with_dem)
 
 
 def run_process(paths: Paths, year: int) -> list:
@@ -57,8 +63,10 @@ def run_process(paths: Paths, year: int) -> list:
         w = csv.DictWriter(fh, fieldnames=list(asdict(result[0][0])))
         w.writeheader()
         w.writerows(asdict(r) for r, _ in result)
-    (paths.processed / "conus_states.geojson").write_text(
-        json.dumps(zones.build_states(paths.raw / config.NE_STATES_NAME), separators=(",", ":")))
+    (paths.processed / "boundaries.geojson").write_text(
+        json.dumps(boundaries.build_boundaries(paths.raw), separators=(",", ":")))
+    (paths.processed / "state_labels.json").write_text(
+        json.dumps(boundaries.build_state_labels(paths.raw / config.NE_STATES_NAME), separators=(",", ":")))
     paths.meta.write_text(json.dumps({
         "year": year,
         "tz_release": raw_manifest["tz_release"],
@@ -86,6 +94,10 @@ def run_solar(paths: Paths, res: float = config.FIELD_RESOLUTION) -> dict:
     return manifest
 
 
+def run_basemap(paths: Paths, max_zoom: int | None = None) -> dict:
+    return basemap.build_basemap(paths.raw, paths.tiles, max_zoom=max_zoom)
+
+
 def run_build(paths: Paths, with_solar: bool = True) -> Path:
     meta = _load_meta(paths)
     solar_manifest = None
@@ -95,11 +107,20 @@ def run_build(paths: Paths, with_solar: bool = True) -> Path:
             solar_manifest = json.loads(mf.read_text())
         else:
             print("build: no solar rasters found (run `rdst solar`); building without sunrise/sunset layers")
+    basemap_meta = None
+    if (paths.tiles / "basemap.json").exists():
+        basemap_meta = json.loads((paths.tiles / "basemap.json").read_text())
+    else:
+        print("build: no basemap tiles found (run `rdst basemap`); the map will use a plain background")
     zone_list = zones.read_processed(paths.zones_geojson)
     return build.build_site(
         paths.site_dir,
         zones_geojson=json.loads(paths.zones_geojson.read_text()),
-        states_geojson=json.loads((paths.processed / "conus_states.geojson").read_text()),
+        boundaries_geojson=json.loads((paths.processed / "boundaries.geojson").read_text()),
+        state_labels=json.loads((paths.processed / "state_labels.json").read_text()),
+        basemap_meta=basemap_meta,
+        tiles_dir=paths.tiles if basemap_meta else None,
+        zone_borders_geojson=zones.zone_borders(zone_list),
         group_labels=zones.group_labels(zone_list),
         year=meta["year"],
         dates=[d.isoformat() for d in config.default_dates(meta["year"])],
@@ -110,9 +131,11 @@ def run_build(paths: Paths, with_solar: bool = True) -> Path:
 
 
 def run_all(paths: Paths, year: int, tz_release: str | None = None, force: bool = False,
-            res: float = config.FIELD_RESOLUTION, with_solar: bool = True) -> Path:
-    run_fetch(paths, tz_release=tz_release, force=force)
+            res: float = config.FIELD_RESOLUTION, with_solar: bool = True, dem: str = "etopo2022",
+            dem_resolution: str = "60s", dem_file: str | None = None, max_zoom: int | None = None) -> Path:
+    run_fetch(paths, tz_release=tz_release, force=force, dem=dem, dem_resolution=dem_resolution, dem_file=dem_file)
     run_process(paths, year)
+    run_basemap(paths, max_zoom=max_zoom)
     if with_solar:
         run_solar(paths, res=res)
     return run_build(paths, with_solar=with_solar)

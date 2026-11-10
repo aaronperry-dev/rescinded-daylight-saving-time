@@ -261,30 +261,6 @@ def build_conus_zones(zip_path: Path, states_path: Path, year: int) -> list[tupl
 
 
 # ----------------------------------------------------------------- map furniture
-def build_states(states_path: Path, tolerance: float = 0.01) -> dict:
-    """Lower-48 + DC state outlines for the thin grey borders drawn over the bands."""
-    with open(states_path, encoding="utf-8") as fh:
-        data = json.load(fh)
-    ids, geoms = [], []
-    for f in data["features"]:
-        p = f["properties"]
-        if p.get("adm0_a3") == "USA" and p.get("postal") not in config.EXCLUDED_STATES:
-            ids.append(p["postal"])
-            geoms.append(_valid(shape(f["geometry"])))
-    try:
-        simp = list(shapely.coverage_simplify(geoms, tolerance)) if shapely.coverage_is_valid(geoms) else None
-    except shapely.errors.GEOSException:
-        simp = None
-    if simp is None:
-        simp = [g.simplify(tolerance, preserve_topology=True) for g in geoms]
-    feats = []
-    for pid, g in zip(ids, simp):
-        m = mapping(g)
-        feats.append({"type": "Feature", "properties": {"postal": pid},
-                      "geometry": {"type": m["type"], "coordinates": _round_coords(m["coordinates"], 2)}})
-    return {"type": "FeatureCollection", "features": feats}
-
-
 def group_labels(zones: list[tuple[ZoneRule, BaseGeometry]]) -> list[dict]:
     """Label anchors for the zone groups ("Eastern", "Central", ...), like the reference maps.
 
@@ -303,3 +279,31 @@ def group_labels(zones: list[tuple[ZoneRule, BaseGeometry]]) -> list[dict]:
         pt = polylabel(biggest, tolerance=0.05)
         out.append({"text": name.upper(), "lat": round(pt.y, 3), "lon": round(pt.x, 3)})
     return out
+
+
+def zone_borders(zones: list[tuple[ZoneRule, BaseGeometry]], nd: int = config.COORD_DECIMALS) -> dict:
+    """Internal borders only: the edges two zones share (no coastline, no national border).
+
+    Zones come out of a coverage simplification, so neighbouring polygons share identical edges
+    and the intersection of their outlines is exactly the border between them.
+    """
+    lines = []
+    geoms = [g for _, g in zones]
+    for i in range(len(geoms)):
+        for j in range(i + 1, len(geoms)):
+            if not geoms[i].intersects(geoms[j]):
+                continue
+            common = geoms[i].boundary.intersection(geoms[j].boundary)
+            for part in getattr(common, "geoms", [common]):
+                if part.geom_type == "LineString" and part.length > 0:
+                    lines.append(part)
+                elif part.geom_type == "MultiLineString":
+                    lines.extend(part.geoms)
+    if not lines:
+        return {"type": "FeatureCollection", "features": []}
+    merged = shapely.line_merge(shapely.union_all(lines))
+    feats = []
+    for ln in getattr(merged, "geoms", [merged]):
+        feats.append({"type": "Feature", "properties": {},
+                      "geometry": {"type": "LineString", "coordinates": _round_coords(mapping(ln)["coordinates"], nd)}})
+    return {"type": "FeatureCollection", "features": feats}

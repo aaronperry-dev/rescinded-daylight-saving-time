@@ -3,7 +3,8 @@
 Output layout (open ``site/index.html`` directly or serve the folder):
 
     index.html  app.js  style.css
-    vendor/leaflet/...            (vendored; only map tiles need the network)
+    vendor/leaflet/...            (vendored)
+    tiles/{z}/{x}/{y}.jpg         (self-rendered terrain + bathymetry basemap, no tile server)
     data/data.js                  (zones + metadata, loaded with <script> so file:// works)
     data/solar/<dataset>.js       (sunrise/sunset bands + isochrones, lazy-loaded)
 """
@@ -24,13 +25,17 @@ def build_site(
     site_dir: Path,
     *,
     zones_geojson: dict,
-    states_geojson: dict,
+    boundaries_geojson: dict,
+    zone_borders_geojson: dict,
+    state_labels: list[dict],
     group_labels: list[dict],
     year: int,
     dates: list[str],
     tz_release: str,
     solar_manifest: dict | None,
     solar_dir: Path | None,
+    basemap_meta: dict | None = None,
+    tiles_dir: Path | None = None,
 ) -> Path:
     site_dir = Path(site_dir)
     if site_dir.exists():
@@ -48,6 +53,9 @@ def build_site(
             body = (Path(solar_dir) / f"{name}.json").read_text(encoding="utf-8")
             (out / f"{name}.js").write_text(f'RDST_LOAD("{name}",{body});\n', encoding="utf-8")
 
+    if basemap_meta and tiles_dir:
+        shutil.copytree(tiles_dir, site_dir / "tiles", ignore=shutil.ignore_patterns("basemap.json"))
+
     payload = {
         "year": year,
         "generatedUtc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
@@ -58,7 +66,10 @@ def build_site(
         "fallbackColor": config.FALLBACK_COLOR,
         "dates": dates,
         "zones": zones_geojson,
-        "states": states_geojson,
+        "boundaries": boundaries_geojson,
+        "zoneBorders": zone_borders_geojson,
+        "stateLabels": state_labels,
+        "basemap": basemap_meta,
         "groupLabels": group_labels,
         "solar": solar_manifest,
     }

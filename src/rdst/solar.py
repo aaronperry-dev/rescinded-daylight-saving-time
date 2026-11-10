@@ -123,17 +123,27 @@ def fmt_label(minutes: float) -> str:
     return f"{(h % 12) or 12}:{m:02d}"
 
 
-def sequential_colors(n: int) -> list[str]:
-    """n colours sampled evenly along the validated sequential blue ramp (light -> dark)."""
-    stops = [tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) for h in config.SEQUENTIAL_RAMP]
+def _lerp_hex(stops: list[str], n: int) -> list[str]:
+    rgb = [tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) for h in stops]
     out = []
     for i in range(n):
-        t = i * (len(stops) - 1) / max(n - 1, 1)
-        j = min(int(t), len(stops) - 2)
+        t = i * (len(rgb) - 1) / max(n - 1, 1)
+        j = min(int(t), len(rgb) - 2)
         f = t - j
-        rgb = [round(a + (b - a) * f) for a, b in zip(stops[j], stops[j + 1])]
-        out.append("#{:02x}{:02x}{:02x}".format(*rgb))
+        out.append("#{:02x}{:02x}{:02x}".format(*(round(a + (b - a) * f) for a, b in zip(rgb[j], rgb[j + 1]))))
     return out
+
+
+def brewer_colors(metric: str, n: int) -> list[str]:
+    """ColorBrewer sequential classes for the metric: YlOrRd for sunrise, RdPu for sunset (light -> dark).
+
+    Uses ColorBrewer's own hand-picked n-class values when they exist (3-9 classes); otherwise the
+    largest published set is interpolated, so any bin count still works.
+    """
+    scheme = config.COLORBREWER[config.SOLAR_SCHEMES[metric]]
+    if n in scheme:
+        return list(scheme[n])
+    return _lerp_hex(scheme[max(scheme)], n)
 
 
 def scale_for(metric: str, stat: str) -> tuple[int, int, int]:
@@ -143,7 +153,7 @@ def scale_for(metric: str, stat: str) -> tuple[int, int, int]:
 
 def legend_for(metric: str, stat: str) -> dict:
     lo, hi, n = scale_for(metric, stat)
-    colors = sequential_colors(n)
+    colors = brewer_colors(metric, n)
     step = config.SOLAR_BIN_MINUTES
     return {
         "bins": [{"color": colors[i], "from": fmt_clock(lo + i * step)} for i in range(n)],

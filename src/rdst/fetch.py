@@ -48,31 +48,46 @@ def _download(session: requests.Session, url: str, dest: Path, retries: int = 3)
     raise RuntimeError(f"Download failed: {url}") from last_err
 
 
-def fetch_all(raw_dir: Path, tz_release: str | None = None, force: bool = False) -> dict:
-    """Download the boundary zip + Natural Earth states into raw_dir (cached)."""
+def fetch_all(raw_dir: Path, tz_release: str | None = None, force: bool = False,
+              dem: str = "etopo2022", dem_resolution: str = "60s", dem_file: str | None = None,
+              with_dem: bool = True) -> dict:
+    """Download the boundary zip, Natural Earth vectors and the DEM into raw_dir (cached)."""
+    from . import dem as dem_mod
+
     raw_dir = Path(raw_dir)
     manifest_path = raw_dir / "manifest.json"
     tz_zip = raw_dir / config.TZ_ZIP_NAME
-    ne_file = raw_dir / config.NE_STATES_NAME
+    ne_paths = {n: raw_dir / n for n in config.NE_FILES}
+    dem_path = raw_dir / config.DEM_FILE_NAME
 
-    if not force and manifest_path.exists() and tz_zip.exists() and ne_file.exists():
-        manifest = json.loads(manifest_path.read_text())
-        if tz_release is None or manifest.get("tz_release") == tz_release:
-            print(f"fetch: using cached inputs (tz release {manifest.get('tz_release')}); pass --force to refresh")
-            return manifest
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    have_vectors = tz_zip.exists() and all(p.exists() for p in ne_paths.values())
+    cached = (not force and have_vectors and manifest.get("tz_release")
+              and (tz_release is None or manifest.get("tz_release") == tz_release))
 
-    session = requests.Session()
-    session.headers.update(_HEADERS)
-    tag = tz_release or resolve_release_tag(session)
-    print(f"fetch: timezone-boundary-builder release {tag}")
-    tz_info = _download(session, config.TZ_TAG_URL.format(tag=tag), tz_zip)
-    print(f"fetch: Natural Earth admin-1 states")
-    ne_info = _download(session, config.NE_STATES_URL, ne_file)
+    if cached:
+        print(f"fetch: using cached inputs (tz release {manifest.get('tz_release')}); pass --force to refresh")
+    else:
+        session = requests.Session()
+        session.headers.update(_HEADERS)
+        tag = tz_release or resolve_release_tag(session)
+        print(f"fetch: timezone-boundary-builder release {tag}")
+        files = {"timezones": _download(session, config.TZ_TAG_URL.format(tag=tag), tz_zip)}
+        for name, path in ne_paths.items():
+            print(f"fetch: Natural Earth {name}")
+            files[name] = _download(session, config.NE_BASE_URL + name, path)
+        manifest = {
+            "retrieved_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "tz_release": tag,
+            "files": files,
+        }
 
-    manifest = {
-        "retrieved_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "tz_release": tag,
-        "files": {"timezones": tz_info, "states": ne_info},
-    }
+    if with_dem:
+        if dem_file:
+            manifest["dem"] = dem_mod.use_dem_file(raw_dir, dem_file)
+        elif force or not dem_path.exists() or manifest.get("dem", {}).get("source") != dem:
+            manifest["dem"] = dem_mod.fetch_dem(raw_dir, dem, dem_resolution)
+        else:
+            print(f"fetch: using cached DEM ({manifest['dem'].get('label')})")
     manifest_path.write_text(json.dumps(manifest, indent=2))
     return manifest
