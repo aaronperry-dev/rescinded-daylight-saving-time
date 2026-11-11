@@ -2,31 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fcfcfb">
   <title>If DST were rescinded &middot; CONUS time zones</title>
   <meta name="description" content="Swipe between current Daylight Saving Time, rescinded DST and permanent DST across the contiguous United States: UTC offsets, sunrise and sunset clock times.">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <aside id="panel" aria-label="Controls">
-    <header>
+  <header id="top">
+    <div class="brand">
       <h1>If DST were rescinded&hellip;</h1>
-      <p class="sub">Swipe the divider to compare clock times across the contiguous U.S. <span id="yearTag"></span></p>
-    </header>
+      <p class="sub">Drag the handle on the map to compare two clock scenarios across the contiguous U.S. <span id="yearTag"></span></p>
+    </div>
+    <button id="shareBtn" class="icon-btn" type="button" aria-label="Share this view">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14"/></svg>
+      <span id="shareText">Share</span>
+    </button>
+  </header>
 
-    <section aria-labelledby="h-compare">
-      <h2 id="h-compare">Compare</h2>
-      <div class="pair">
-        <label class="sel"><span class="sel-tag left">Left</span>
-          <select id="selLeft"></select></label>
-        <label class="sel"><span class="sel-tag right">Right</span>
-          <select id="selRight"></select></label>
-      </div>
-    </section>
-
+  <aside id="panel" aria-label="Controls">
     <section aria-labelledby="h-layer">
-      <h2 id="h-layer">Map layer</h2>
+      <h2 id="h-layer">1 &middot; What to compare</h2>
       <div class="seg" id="modeSeg" role="radiogroup" aria-label="Map layer">
         <button type="button" role="radio" data-mode="zones">Time zones</button>
         <button type="button" role="radio" data-mode="sunrise">Sunrise</button>
@@ -44,12 +41,47 @@
         <div class="date-row">
           <label for="dateRange">Date</label>
           <output id="dateLabel" for="dateRange"></output>
+          <span class="quick" role="group" aria-label="Jump to a season">
+            <button type="button" id="jumpWinter">Winter</button>
+            <button type="button" id="jumpSummer">Summer</button>
+          </span>
         </div>
         <input id="dateRange" type="range" min="0" step="1" value="0" aria-describedby="status">
         <div id="dstStrip" class="strip" aria-hidden="true"></div>
+        <div id="monthTicks" class="months" aria-hidden="true"></div>
         <div class="strip-key"><span class="key-dst"></span> DST in effect under current law</div>
       </div>
       <p id="status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="h-compare">
+      <h2 id="h-compare">2 &middot; Which scenarios</h2>
+      <div class="pair">
+        <label class="sel"><span class="sel-tag left">Left</span>
+          <select id="selLeft"></select></label>
+        <label class="sel"><span class="sel-tag right">Right</span>
+          <select id="selRight"></select></label>
+        <p id="pairNote" class="pair-note"></p>
+        <button id="swapBtn" class="swap" type="button" aria-label="Swap left and right">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="legendSection" class="desktop-only" aria-labelledby="h-legend">
+      <h2 id="h-legend"><span id="legendTitle">Legend</span></h2>
+      <div id="legend"></div>
+    </section>
+
+    <section aria-labelledby="h-table">
+      <h2 id="h-table"><span id="tableTitle"></span></h2>
+      <div class="table-wrap">
+        <table id="table">
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <div id="hoverCard" class="hover-card" aria-live="polite"></div>
     </section>
 
     <section aria-labelledby="h-display">
@@ -59,25 +91,14 @@
         <output id="opacityLabel" for="opacityRange"></output>
       </div>
       <input id="opacityRange" type="range" min="10" max="100" step="5" value="78">
-    </section>
-
-    <section aria-labelledby="h-legend">
-      <h2 id="h-legend"><span id="legendTitle">Legend</span></h2>
-      <div id="legend"></div>
+      <p class="legend-note">Lower it to see the terrain underneath. Switch basemaps with the layers button on the map.</p>
     </section>
 
     <section id="basemapSection" aria-labelledby="h-basemap">
-      <h2 id="h-basemap">Basemap</h2>
-      <div id="basemapLegend"></div>
-    </section>
-
-    <section aria-labelledby="h-table">
-      <h2 id="h-table"><span id="tableTitle"></span></h2>
-      <table id="table">
-        <thead id="tableHead"></thead>
-        <tbody id="tableBody"></tbody>
-      </table>
-      <div id="hoverCard" class="hover-card" aria-live="polite"></div>
+      <details class="fold">
+        <summary id="h-basemap">Basemap key (feet)</summary>
+        <div id="basemapLegend"></div>
+      </details>
     </section>
 
     <details class="notes">
@@ -92,6 +113,11 @@
 
   <main id="stage">
     <div id="map" role="application" aria-label="Map comparing two daylight saving time scenarios"></div>
+    <div id="mapLegend" aria-hidden="true"></div>
+    <div id="hint" class="hint" role="status">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg>
+      Drag to compare
+    </div>
   </main>
 
   <script src="vendor/leaflet/leaflet.js"></script>

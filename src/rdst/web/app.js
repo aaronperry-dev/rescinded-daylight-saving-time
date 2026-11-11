@@ -46,7 +46,7 @@
 
   // --------------------------------------------------------------------- state
   const defaultIdx = Math.max(0, D.dates.indexOf(D.year + '-07-01'));
-  const state = { left: 'current', right: 'rescinded', mode: 'zones', stat: 'latest', dateIdx: defaultIdx, ratio: 0.5, opacity: 0.78 };
+  const state = { left: 'current', right: 'rescinded', mode: 'zones', stat: 'latest', dateIdx: defaultIdx, ratio: 0.5, opacity: 0.72 };
   (function readHash() {
     const q = new URLSearchParams(location.hash.slice(1));
     const ok = (k, allowed) => allowed.includes(q.get(k));
@@ -63,16 +63,22 @@
   const viewKey = () => state.mode + '_' + state.stat;
 
   // ----------------------------------------------------------------------- map
+  const CONUS_BOUNDS = [[24.5, -125], [49.6, -66.6]];
   const BM = D.basemap;                // null when the site was built without `rdst basemap`
   const map = L.map('map', {
     zoomControl: false, minZoom: 3, maxZoom: 12, zoomSnap: 0.5, zoomDelta: 0.5, wheelPxPerZoomLevel: 90,
-    maxBoundsViscosity: 0.7,
+    maxBoundsViscosity: 0.7, attributionControl: false,
   });
+  L.control.attribution({ prefix: '<a href="https://leafletjs.com">Leaflet</a>' }).addTo(map);
   if (BM) {
     $('map').style.background = BM.background;
-    map.setMaxBounds([[BM.bounds[1], BM.bounds[0]], [BM.bounds[3], BM.bounds[2]]]);
+    const tileBounds = L.latLngBounds([BM.bounds[1], BM.bounds[0]], [BM.bounds[3], BM.bounds[2]]);
+    map.setMaxBounds(tileBounds);
+    // Zoom-out limit: as far as the tiles still cover the whole screen, but never so tight that
+    // the contiguous U.S. no longer fits (a tall phone can then show a little empty margin).
+    const fitMin = () => map.setMinZoom(Math.max(3, Math.min(map.getBoundsZoom(tileBounds, true), map.getBoundsZoom(CONUS_BOUNDS, false))));
+    map.on('resize', fitMin); fitMin();
   }
-  const CONUS_BOUNDS = [[24.5, -125], [49.6, -66.6]];
   map.fitBounds(CONUS_BOUNDS, { padding: [8, 8] });
   L.control.zoom({ position: 'topleft' }).addTo(map);
 
@@ -94,7 +100,7 @@
     basemaps['Terrain & bathymetry'] = L.tileLayer('tiles/{z}/{x}/{y}.jpg', {
       minZoom: BM.minZoom, maxNativeZoom: BM.maxZoom, maxZoom: 12, tileSize: BM.tileSize,
       bounds: [[BM.bounds[1], BM.bounds[0]], [BM.bounds[3], BM.bounds[2]]],
-      attribution: 'Relief &amp; depth: ' + BM.demLabel + ' &middot; shorelines &amp; borders: <a href="https://www.naturalearthdata.com/">Natural Earth</a>',
+      attribution: ((BM.demLabel.match(/^ETOPO\s?\d*/) || ['Elevation data'])[0]) + ' &middot; <a href="https://www.naturalearthdata.com/">Natural Earth</a>',
     });
   }
   basemaps['Plain'] = L.layerGroup();
@@ -113,12 +119,12 @@
   const stroke = (data, style) => L.geoJSON(data, { pane: 'borders', interactive: false,
     style: Object.assign({ fill: false, lineCap: 'round', lineJoin: 'round' }, style) }).addTo(map);
   const kind = (k) => ({ type: 'FeatureCollection', features: D.boundaries.features.filter((f) => f.properties.kind === k) });
-  stroke(D.zoneBorders, { color: '#000000', weight: 8, opacity: 0.4 });
-  stroke(D.zoneBorders, { color: '#ffffff', weight: 5, opacity: 1 });
-  stroke(kind('state'), { color: '#ffffff', weight: 4, opacity: 0.55 });
-  stroke(kind('state'), { color: '#171717', weight: 1.7, opacity: 1 });
-  stroke(kind('international'), { color: '#ffffff', weight: 7.5, opacity: 0.9 });
-  stroke(kind('international'), { color: '#000000', weight: 3.6, opacity: 1 });
+  stroke(D.zoneBorders, { color: '#1b2733', weight: 4.6, opacity: 0.3 });
+  stroke(D.zoneBorders, { color: '#ffffff', weight: 2.8, opacity: 0.95 });
+  stroke(kind('state'), { color: '#ffffff', weight: 2.8, opacity: 0.35 });
+  stroke(kind('state'), { color: '#2c3238', weight: 1.1, opacity: 1 });
+  stroke(kind('international'), { color: '#ffffff', weight: 4.8, opacity: 0.6 });
+  stroke(kind('international'), { color: '#171b20', weight: 2.3, opacity: 1 });
 
   const groupLabels = L.layerGroup(D.groupLabels.map((g) => L.marker([g.lat, g.lon], {
     pane: 'labels', interactive: false, keyboard: false,
@@ -144,7 +150,7 @@
         style: (f) => zoneStyle(side, f),
         onEachFeature: (f, lyr) => {
           lyr.bindTooltip(() => zoneTip(side, f.properties), { sticky: true });
-          lyr.on('mouseover', () => showHover(f.properties));
+          lyr.on('mouseover click', () => showHover(f.properties));
           lyr.on('mouseout', () => showHover(null));
         },
       }),
@@ -164,7 +170,7 @@
   }
   function showHover(p) {
     const el = $('hoverCard');
-    if (!p || state.mode !== 'zones') { el.innerHTML = state.mode === 'zones' ? 'Hover a zone for details.' : ''; return; }
+    if (!p || state.mode !== 'zones') { el.innerHTML = state.mode === 'zones' ? 'Tap or hover a zone for details.' : ''; return; }
     const iso = isoDate();
     const part = (side) => {
       const s = state[side];
@@ -198,6 +204,13 @@
     PANES.left.forEach((p) => { map.getPane(p).style.clip = leftClip; });
     PANES.right.forEach((p) => { map.getPane(p).style.clip = rightClip; });
     divider.style.left = x + 'px';
+    // keep each scenario chip inside its own side, clear of the zoom and layer buttons
+    const room = [x - 12 - 52, size.x - x - 12 - 52];
+    [['chipLeft', room[0]], ['chipRight', room[1]]].forEach(([id, r]) => {
+      const el = $(id);
+      el.style.display = r < 70 ? 'none' : '';
+      el.style.maxWidth = Math.max(70, Math.min(r, 300)) + 'px';
+    });
     $('handle').setAttribute('aria-valuenow', Math.round(state.ratio * 100));
   }
   function setRatio(r) { state.ratio = Math.min(0.98, Math.max(0.02, r)); updateClip(); }
@@ -260,7 +273,7 @@
       },
     }));
     L_.lines.addLayer(L.geoJSON(ds.lines, { pane: side, interactive: false,
-      style: { color: '#1a1a1a', weight: 1.4, opacity: 0.95, dashArray: '6 4' } }));
+      style: { color: '#2a2f36', weight: 1.1, opacity: 0.85, dashArray: '5 3' } }));
     ds.labels.forEach((l) => L_.labels.addLayer(L.marker([l[0], l[1]], {
       pane: side, interactive: false, keyboard: false,
       icon: L.divIcon({ className: 'iso-label', iconSize: [0, 0],
@@ -290,11 +303,18 @@
     document.querySelectorAll('#modeSeg button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === state.mode)));
     document.querySelectorAll('#statSeg button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.stat === state.stat)));
     $('selLeft').value = state.left; $('selRight').value = state.right;
-    $('chipLeft').textContent = D.scenarios[state.left];
-    $('chipRight').textContent = D.scenarios[state.right];
+    SIDES.forEach((s) => {
+      const full = D.scenarios[state[s]], [head, tail] = full.split(' – ');
+      $(s === 'left' ? 'chipLeft' : 'chipRight').innerHTML = head + (tail ? '<small class="long">' + tail + '</small>' : '');
+    });
     writeHash();
     applyOpacity();
+    $('pairNote').innerHTML = SIDES.map((s) => {
+      const [head, tail] = D.scenarios[state[s]].split(' – ');
+      return '<span class="' + s + '"><b>' + (s === 'left' ? 'Left' : 'Right') + ':</b> ' + tail + '</span>';
+    }).join('');
 
+    mapEl.classList.toggle('mode-solar', !zonesMode);
     setVisible('zones', zonesMode);
     setVisible('bands', !zonesMode); setVisible('lines', !zonesMode); setVisible('labels', !zonesMode);
 
@@ -323,6 +343,19 @@
       if (token !== renderToken) return;
       $('status').textContent = 'Sunrise/sunset data is missing. Run `rdst solar` and rebuild the site.';
     });
+  }
+
+  // ------------------------------------------------------------ share link
+  function shareView() {
+    const url = location.href;
+    const done = (msg) => { $('shareText').textContent = msg; setTimeout(() => { $('shareText').textContent = 'Share'; }, 1800); };
+    if (navigator.share) {
+      navigator.share({ title: document.title, url }).catch(() => { /* cancelled */ });
+    } else if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(() => done('Link copied'), () => done('Copy the address bar'));
+    } else {
+      done('Copy the address bar');
+    }
   }
 
   // ------------------------------------------------- opacity + basemap legend
@@ -356,18 +389,20 @@
     D.zones.features.forEach((f) => SIDES.forEach((s) => present.add(offsetFor(f.properties, iso, state[s]))));
     const offs = [...present].sort((a, b) => b - a);
     $('legendTitle').textContent = 'Clock offset from UTC';
-    $('legend').innerHTML = '<div class="legend-offsets">' +
-      offs.map((h) => '<span><i style="background:' + colorFor(h) + '"></i>' + fmtUtc(h) + '</span>').join('') + '</div>' +
-      '<p class="legend-note">Same colour = same clock time on both sides.</p>';
+    const chips = '<div class="legend-offsets">' +
+      offs.map((h) => '<span><i style="background:' + colorFor(h) + '"></i>' + fmtUtc(h) + '</span>').join('') + '</div>';
+    $('legend').innerHTML = chips + '<p class="legend-note">Same colour = same clock time on both sides.</p>';
+    $('mapLegend').innerHTML = '<div class="ml-title">Clock offset from UTC &middot; ' + fmtDate(iso) + '</div>' + chips;
   }
 
   function renderSolarLegend(view) {
     $('legendTitle').textContent = view.title;
     const bins = view.legend.bins;
-    $('legend').innerHTML = '<div class="ramp">' + bins.map((b) => '<i style="background:' + b.color + '"></i>').join('') + '</div>' +
+    const ramp = '<div class="ramp">' + bins.map((b) => '<i style="background:' + b.color + '"></i>').join('') + '</div>' +
       '<div class="ramp-labels">' + bins.map((b, i) => '<span>' + (i % 2 === 0 && i !== bins.length - 1 ? b.from : '') + '</span>').join('') +
-      '<span>' + view.legend.end + '</span></div>' +
-      '<p class="legend-note">30-minute bands; first and last bands are open-ended. Same scale on both sides.</p>';
+      '<span>' + view.legend.end + '</span></div>';
+    $('legend').innerHTML = ramp + '<p class="legend-note">30-minute bands; first and last bands are open-ended. Same scale on both sides.</p>';
+    $('mapLegend').innerHTML = '<div class="ml-title">' + view.title + ' &middot; local time</div>' + ramp;
   }
 
   function renderZoneStatus() {
@@ -410,7 +445,7 @@
     $('yearNote').textContent = D.year;
     $('tzRelease').textContent = D.tzRelease;
     $('built').textContent = D.generatedUtc;
-    const opts = Object.entries(D.scenarios).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('');
+    const opts = Object.entries(D.scenarios).map(([k, v]) => '<option value="' + k + '">' + v.split(' – ')[0] + '</option>').join('');
     $('selLeft').innerHTML = opts; $('selRight').innerHTML = opts;
     $('selLeft').addEventListener('change', (e) => { state.left = e.target.value; render(); });
     $('selRight').addEventListener('change', (e) => { state.right = e.target.value; render(); });
@@ -424,6 +459,13 @@
     op.addEventListener('input', () => { state.opacity = parseInt(op.value, 10) / 100; applyOpacity(); writeHash(); });
     renderBasemapLegend();
 
+    $('swapBtn').addEventListener('click', () => { [state.left, state.right] = [state.right, state.left]; render(); });
+    $('shareBtn').addEventListener('click', shareView);
+    const nearest = (md) => Math.max(0, D.dates.indexOf(D.year + '-' + md));
+    $('jumpWinter').addEventListener('click', () => { state.dateIdx = nearest('01-15'); $('dateRange').value = String(state.dateIdx); render(); });
+    $('jumpSummer').addEventListener('click', () => { state.dateIdx = nearest('07-01'); $('dateRange').value = String(state.dateIdx); render(); });
+    $('monthTicks').innerHTML = 'JFMAMJJASOND'.split('').map((m) => '<span>' + m + '</span>').join('');
+
     const range = $('dateRange');
     range.max = String(D.dates.length - 1); range.value = String(state.dateIdx);
     range.addEventListener('input', () => { state.dateIdx = parseInt(range.value, 10); render(); });
@@ -431,6 +473,22 @@
       const on = D.zones.features.some((f) => dstActive(f.properties, iso));
       return '<i class="' + (on ? 'dst' : '') + '" title="' + fmtDate(iso) + '"></i>';
     }).join('');
+  })();
+
+  // First-visit hint: pulse the handle and explain it until the person drags or taps the map.
+  (function hint() {
+    const el = $('hint');
+    let seen = false;
+    try { seen = sessionStorage.getItem('rdst-hint') === '1'; } catch (_) { /* storage blocked */ }
+    if (seen) { el.classList.add('gone'); return; }
+    document.body.classList.add('nudge');
+    const dismiss = () => {
+      el.classList.add('gone'); document.body.classList.remove('nudge');
+      try { sessionStorage.setItem('rdst-hint', '1'); } catch (_) { /* ignore */ }
+    };
+    divider.addEventListener('pointerdown', dismiss, { once: true });
+    $('handle').addEventListener('keydown', dismiss, { once: true });
+    setTimeout(dismiss, 9000);
   })();
 
   map.whenReady(() => { updateClip(); render(); });

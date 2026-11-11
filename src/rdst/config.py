@@ -131,7 +131,12 @@ DEM_MARGIN = 0.5                # degrees of DEM beyond the tile coverage (hills
 FT_PER_M = 3.280839895
 JPEG_QUALITY = 85
 MIN_LAKE_AREA = 0.004           # deg^2 (~40 km2); smaller lakes are sub-pixel and skipped
-HILLSHADE = {"azimuth": 315.0, "altitude": 42.0, "zfactor": 4.0, "land_strength": 0.6, "water_strength": 0.3}
+# Hillshade: several light directions blended (weights sum to 1) so ridges read naturally instead of
+# looking lit by one lamp; strengths are how far the shading moves the colour (0 = none).
+HILLSHADE = {"azimuths": [(225.0, 0.15), (270.0, 0.2), (315.0, 0.45), (360.0, 0.2)], "altitude": 45.0,
+             "zfactor": 3.0, "land_strength": 0.55, "water_strength": 0.22}
+COAST_RGB = (92, 118, 136)      # thin shoreline stroke drawn where land meets water
+COAST_ALPHA = 0.42
 
 # Digital elevation model sources (metres, positive up). Both include ocean bathymetry
 # and Great Lakes bathymetry; ETOPO 2022 is far sharper.
@@ -147,15 +152,15 @@ DEM_FILE_NAME = "dem.npz"
 
 # Land elevation ramp in FEET above sea level: (feet, colour). Piecewise-linear between stops.
 LAND_RAMP_FT = [
-    (-500, "#86aea0"), (0, "#b5d9a8"), (500, "#a4cf93"), (1000, "#bcd98f"), (2000, "#dce196"),
-    (3000, "#ecdc96"), (4000, "#e6c58a"), (5000, "#d9ad7f"), (6000, "#c99673"), (8000, "#b2806c"),
-    (10000, "#9c746f"), (12000, "#b4a39e"), (14000, "#e9e4e0"),
+    (-500, "#a9bfae"), (0, "#cbdbbd"), (500, "#d4e0bf"), (1000, "#dde3c3"), (2000, "#e7e4c6"),
+    (3000, "#e8dbb9"), (4000, "#ddc9a6"), (5000, "#d0b793"), (6000, "#c2a384"), (8000, "#af9079"),
+    (10000, "#a08c82"), (12000, "#c1b6ae"), (14000, "#ece8e3"),
 ]
 # Water depth ramp in FEET below the water surface (oceans: below sea level; lakes: below the lake).
 BATHY_RAMP_FT = [
-    (0, "#e3f1f8"), (25, "#d3e8f3"), (50, "#c3dff0"), (100, "#b0d4ea"), (200, "#9bc7e3"),
-    (400, "#85b6d9"), (800, "#6fa2cd"), (1500, "#5a8dc0"), (3000, "#4678ae"), (6000, "#32609a"),
-    (10000, "#224a82"), (15000, "#163768"), (20000, "#0f2750"),
+    (0, "#e4eef3"), (25, "#dae8f0"), (50, "#cfe1ec"), (100, "#c1d8e8"), (200, "#aecce1"),
+    (400, "#9abcd6"), (800, "#85a9c9"), (1500, "#7096bb"), (3000, "#5b81a8"), (6000, "#486b94"),
+    (10000, "#385781"), (15000, "#2c4770"), (20000, "#223a5e"),
 ]
 # Surface elevations (feet above sea level) of the lakes where bathymetry depth matters most.
 # Natural Earth `name` -> feet. Other lakes fall back to the 95th percentile of the DEM inside them.

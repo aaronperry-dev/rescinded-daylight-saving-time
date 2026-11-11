@@ -42,12 +42,13 @@ def ramp_info(stops: list[tuple[float, str]]) -> list[dict]:
 
 
 # --------------------------------------------------------------------------- terrain
-def hillshade_grid(lon: np.ndarray, lat: np.ndarray, z_m: np.ndarray, *, azimuth: float, altitude: float,
+def hillshade_grid(lon: np.ndarray, lat: np.ndarray, z_m: np.ndarray, *, azimuth, altitude: float,
                    zfactor: float) -> np.ndarray:
     """Hillshade on the DEM grid itself (so the tile renderer only has to resample it).
 
     Returns the cosine of the angle between the surface normal and the light, 0..1; a flat surface
-    gives sin(altitude). ``lat`` must be ascending.
+    gives sin(altitude). ``azimuth`` is one direction in degrees or a list of ``(degrees, weight)``
+    pairs (weights sum to 1) blended into a multi-directional shade. ``lat`` must be ascending.
     """
     dlat = float(np.mean(np.diff(lat)))
     dlon = float(np.mean(np.diff(lon)))
@@ -62,9 +63,14 @@ def hillshade_grid(lon: np.ndarray, lat: np.ndarray, z_m: np.ndarray, *, azimuth
     zf = zfactor * max(1.0, cell_m / 1850.0) ** 0.5
     nx, ny, nz = -zf * dz_dx, -zf * dz_dy, np.ones_like(dz_dx)
     norm = np.sqrt(nx * nx + ny * ny + nz * nz)
-    az, alt = math.radians(azimuth), math.radians(altitude)
-    lx, ly, lz = math.sin(az) * math.cos(alt), math.cos(az) * math.cos(alt), math.sin(alt)
-    return np.clip((nx * lx + ny * ly + nz * lz) / norm, 0.0, 1.0)
+    alt = math.radians(altitude)
+    lights = azimuth if isinstance(azimuth, (list, tuple)) else [(azimuth, 1.0)]
+    out = np.zeros_like(norm)
+    for deg, weight in lights:
+        az = math.radians(deg)
+        lx, ly, lz = math.sin(az) * math.cos(alt), math.cos(az) * math.cos(alt), math.sin(alt)
+        out += weight * (nx * lx + ny * ly + nz * lz) / norm
+    return np.clip(out, 0.0, 1.0)
 
 
 def _frac_index(axis: np.ndarray, q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -223,7 +229,7 @@ class TileRenderer:
         self.lon, self.lat = lon, lat
         self.z_ft = z_m.astype(np.float64) * config.FT_PER_M
         hs = config.HILLSHADE
-        self.shade = hillshade_grid(lon, lat, z_m, azimuth=hs["azimuth"], altitude=hs["altitude"], zfactor=hs["zfactor"])
+        self.shade = hillshade_grid(lon, lat, z_m, azimuth=hs["azimuths"], altitude=hs["altitude"], zfactor=hs["zfactor"])
         self.flat = math.sin(math.radians(hs["altitude"]))
         self.cell_deg = float(abs(lat[1] - lat[0]))
         self.water = Water(Path(raw_dir), lon, lat, self.z_ft)
@@ -247,6 +253,10 @@ class TileRenderer:
         k = np.where(is_water, hs["water_strength"], hs["land_strength"])
         factor = 1.0 + k * (sh / self.flat - 1.0)
         rgb = np.clip(rgb * factor[..., None], 0, 255)
+
+        # thin shoreline stroke where land meets water (before downsampling, so it stays ~1 px)
+        edge = (is_water != np.roll(is_water, 1, axis=0)) | (is_water != np.roll(is_water, 1, axis=1))
+        rgb[edge] = rgb[edge] * (1 - config.COAST_ALPHA) + np.array(config.COAST_RGB) * config.COAST_ALPHA
 
         outside = ((qlon < self.lon[0]) | (qlon > self.lon[-1]))[None, :] | \
                   ((qlat < self.lat[0]) | (qlat > self.lat[-1]))[:, None]

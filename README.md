@@ -22,6 +22,12 @@ Scenarios you can put on either side:
 
 A city table beside the map gives the same numbers for ten reference cities.
 
+**On phones** the map stays pinned at the top while the controls scroll beneath it, the legend sits on the map, controls are
+44 px touch targets, and a Share button copies or shares a link that restores the exact view (layer, scenarios, date, opacity).
+On first visit a pulsing handle and a "Drag to compare" hint explain the swipe.
+
+<img src="docs/img/mobile.png" alt="phone layout: pinned map with legend, controls below" width="260">
+
 ![swipe map: latest sunset, current vs rescinded](docs/img/sunset_latest.png)
 
 ## Quick start
@@ -98,9 +104,11 @@ environment this repo was developed in (no access to `ngdc.noaa.gov`); the rende
 10 arc-minute grid and in the tests. If NOAA's server changes or is unreachable, `rdst fetch` says so and you can use
 `--dem etopo10` or `--dem-file`.
 
-Boundary styling (in `app.js`, drawn bottom to top): time-zone borders (thick white with a dark edge), state and
-province lines (white casing + near-black line), then international borders (wide white casing + heavy black line).
-Sunrise/sunset isochrones are dashed so they cannot be mistaken for borders.
+Cartographic style: muted, low-saturation ramps (`LAND_RAMP_FT`, `BATHY_RAMP_FT`), a multi-directional hillshade, and a thin
+shoreline stroke, so the thematic colours on top stay the focus. Boundaries form a hierarchy by width and tone (in `app.js`, drawn
+bottom to top): time-zone borders (white with a faint dark edge), state and province lines (thin charcoal), then international
+borders (heaviest, near-black). Zone and state names are plain haloed text, and sunrise/sunset isochrones are fine dashed
+lines so they cannot be mistaken for borders.
 
 ## Configuration
 
